@@ -101,6 +101,8 @@ class FamilyLink:
         cwd = os.getcwd()
         in_profiles_dir = bool(profiles_dir and cwd.startswith(profiles_dir))
 
+        authuser = os.getenv("FAMILYLINK_AUTHUSER", "0")
+
         sapisid = os.getenv("FAMILYLINK_SAPISID", "").strip() or None
         cookies_jar = None
 
@@ -185,6 +187,7 @@ class FamilyLink:
             "Origin": self.ORIGIN,
             "Content-Type": "application/json+protobuf",
             "X-Goog-Api-Key": "AIzaSyAQb1gupaJhY3CXQy2xmTwJMcjmot3M2hw",
+            "X-Goog-AuthUser": authuser,
             "Authorization": authorization,
         }
         # Prefer jar if present; otherwise start empty (we already have SAPISIDHASH header)
