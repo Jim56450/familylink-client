@@ -101,7 +101,13 @@ class FamilyLink:
         cwd = os.getcwd()
         in_profiles_dir = bool(profiles_dir and cwd.startswith(profiles_dir))
 
-        authuser = os.getenv("FAMILYLINK_AUTHUSER", "0")
+        authuser = os.getenv("FAMILYLINK_AUTHUSER", "").strip()
+        if in_profiles_dir and not authuser:
+            p = Path("authuser.txt")
+            if p.exists() and p.is_file():
+                authuser = p.read_text(encoding="utf-8").strip()
+        if not authuser:
+            authuser = "0"  # sensible default
 
         sapisid = os.getenv("FAMILYLINK_SAPISID", "").strip() or None
         cookies_jar = None
