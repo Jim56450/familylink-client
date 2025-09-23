@@ -3,6 +3,7 @@
 from enum import Enum
 
 from pydantic.v1 import BaseModel, Field
+from typing import Optional
 
 
 # === Apps ===
@@ -173,7 +174,8 @@ class Profile(BaseModel):
     email: str
     family_name: str = Field(alias="familyName")
     given_name: str = Field(alias="givenName")
-    standard_gender: str = Field(alias="standardGender")
+    #standard_gender: str = Field(alias="standardGender")
+    standard_gender: Optional[str] = Field(default=None, alias="standardGender")
     birthday: Birthday | None = None
     default_profile_image_url: str = Field(alias="defaultProfileImageUrl")
 
