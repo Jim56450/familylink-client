@@ -7,10 +7,15 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import browser_cookie3
+import os
 import httpx
+try:
+    import browser_cookie3  # may be unavailable in Docker
+except Exception:
+    browser_cookie3 = None
 
 from familylink.models import AlwaysAllowedState, AppUsage, MembersResponse
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +26,59 @@ class FamilyLink:
     BASE_URL = "https://kidsmanagement-pa.clients6.google.com/kidsmanagement/v1"
     ORIGIN = "https://familylink.google.com"
 
+    # def __init__(
+    #     self,
+    #     account_id: str | None = None,
+    #     browser: str = "firefox",
+    #     cookie_file_path: Path | None = None,
+    # ):
+    #     """Initialize the Family Link client.
+    #
+    #     Args:
+    #         account_id: The Google account ID to manage
+    #             (if not provided, the first supervised member is used)
+    #         browser: The browser to get cookies from if sapisid not provided
+    #         cookie_file_path: (Optional) The path to the cookie file to use
+    #     """
+    #     self.account_id = account_id
+    #
+    #     cookie_kwargs = {}
+    #     if cookie_file_path:
+    #         if not cookie_file_path.exists():
+    #             raise ValueError(f"Cookie file not found: {cookie_file_path}")
+    #         if not cookie_file_path.is_file():
+    #             raise ValueError(f"Cookie file is not a file: {cookie_file_path}")
+    #         cookie_kwargs["cookie_file"] = str(cookie_file_path.resolve())
+    #
+    #     self._cookies = getattr(browser_cookie3, browser)(**cookie_kwargs)
+    #
+    #     for cookie in self._cookies:
+    #         if cookie.name == "SAPISID" and cookie.domain == ".google.com":
+    #             sapisid = cookie.value
+    #             break
+    #
+    #     if not sapisid:
+    #         raise ValueError("Could not find SAPISID cookie in browser")
+    #
+    #     # Generate authorization header
+    #     sapisidhash = _generate_sapisidhash(sapisid, self.ORIGIN)
+    #     authorization = f"SAPISIDHASH {sapisidhash}"
+    #
+    #     self._headers = {
+    #         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    #         "Origin": self.ORIGIN,
+    #         "Content-Type": "application/json+protobuf",
+    #         "X-Goog-Api-Key": "AIzaSyAQb1gupaJhY3CXQy2xmTwJMcjmot3M2hw",
+    #         "Authorization": authorization,
+    #     }
+    #     self._session = httpx.Client(headers=self._headers, cookies=self._cookies)
+    #     self._app_names = {}  # cache app names
+
     def __init__(
-        self,
-        account_id: str | None = None,
-        browser: str = "firefox",
-        cookie_file_path: Path | None = None,
+            self,
+            account_id: str | None = None,
+            browser: str = "firefox",
+            cookie_file_path: Path | None = None,
     ):
         """Initialize the Family Link client.
 
@@ -35,27 +88,95 @@ class FamilyLink:
             browser: The browser to get cookies from if sapisid not provided
             cookie_file_path: (Optional) The path to the cookie file to use
         """
+        import os
+        from http.cookiejar import MozillaCookieJar
+
         self.account_id = account_id
 
-        cookie_kwargs = {}
-        if cookie_file_path:
+        # -------- cookie / SAPISID sources (in order of preference) --------
+        env_browser = os.getenv("FAMILYLINK_BROWSER")
+        browser = (env_browser or browser or "chrome").lower()
+
+        profiles_dir = os.getenv("FAMILYLINK_PROFILES_DIR", "").strip()
+        cwd = os.getcwd()
+        in_profiles_dir = bool(profiles_dir and cwd.startswith(profiles_dir))
+
+        sapisid = os.getenv("FAMILYLINK_SAPISID", "").strip() or None
+        cookies_jar = None
+
+        # 0) An explicit cookie file via ENV overrides arg (handy in Docker)
+        env_cookie_file = os.getenv("FAMILYLINK_COOKIE_FILE", "").strip()
+        if env_cookie_file:
+            cookie_file_path = Path(env_cookie_file)
+
+        # 1) If we’re inside a mounted profiles dir in Docker, prefer local files/env
+        if in_profiles_dir and not sapisid:
+            # a) try a simple text file with just the SAPISID value
+            for fname in ("sapisid.txt", "SAPISID"):
+                p = Path(fname)
+                if p.exists() and p.is_file():
+                    val = p.read_text(encoding="utf-8").strip()
+                    if val:
+                        sapisid = val
+                        break
+            # b) try a Netscape/Mozilla cookies.txt in the cwd
+            if not sapisid:
+                for fname in ("cookies.txt",):
+                    p = Path(fname)
+                    if p.exists() and p.is_file():
+                        try:
+                            cj = MozillaCookieJar()
+                            cj.load(str(p), ignore_discard=True, ignore_expires=True)
+                            cookies_jar = cj
+                        except Exception:
+                            cookies_jar = None
+                        break
+
+        # 2) If a cookie file path was provided (arg or env), use that
+        if not sapisid and not cookies_jar and cookie_file_path:
             if not cookie_file_path.exists():
                 raise ValueError(f"Cookie file not found: {cookie_file_path}")
             if not cookie_file_path.is_file():
                 raise ValueError(f"Cookie file is not a file: {cookie_file_path}")
-            cookie_kwargs["cookie_file"] = str(cookie_file_path.resolve())
+            # Try Netscape/Mozilla cookie file first (works cross-platform)
+            try:
+                cj = MozillaCookieJar()
+                cj.load(str(cookie_file_path.resolve()), ignore_discard=True, ignore_expires=True)
+                cookies_jar = cj
+            except Exception:
+                cookies_jar = None  # fall back below
 
-        self._cookies = getattr(browser_cookie3, browser)(**cookie_kwargs)
+        # 3) Last resort: read cookies from a local browser profile (only on host)
+        if not sapisid and not cookies_jar:
+            # Avoid browser_cookie3 inside containers (no DBus/keychain)
+            if in_profiles_dir:
+                raise RuntimeError(
+                    "No cached SAPISID/cookies found in profile dir and browser access is disabled in container. "
+                    "Provide sapisid.txt or cookies.txt under the profile folder, or set FAMILYLINK_SAPISID/FAMILYLINK_COOKIE_FILE."
+                )
+            # Host usage: pull from browser
+            cookie_kwargs = {}
+            # Note: if you want to point to a specific SQLite, pass cookie_file_path and let browser_cookie3 read it.
+            if cookie_file_path:
+                cookie_kwargs["cookie_file"] = str(cookie_file_path.resolve())
+            cookies_jar = getattr(browser_cookie3, browser)(**cookie_kwargs)  # type: ignore[name-defined]
 
-        for cookie in self._cookies:
-            if cookie.name == "SAPISID" and cookie.domain == ".google.com":
-                sapisid = cookie.value
-                break
+        # -------- extract SAPISID from whichever source we got --------
+        if not sapisid and cookies_jar is not None:
+            for cookie in cookies_jar:
+                if cookie.name == "SAPISID" and cookie.domain == ".google.com":
+                    sapisid = cookie.value
+                    break
 
         if not sapisid:
-            raise ValueError("Could not find SAPISID cookie in browser")
+            raise ValueError(
+                "Could not find SAPISID. "
+                "On host: ensure you’re signed in (Chrome/Firefox) or pass FAMILYLINK_COOKIE_FILE. "
+                "In Docker: put sapisid.txt (with the raw SAPISID value) or cookies.txt in the profile folder, "
+                "or set FAMILYLINK_SAPISID."
+            )
 
-        # Generate authorization header
+        # -------- build headers/session exactly like before --------
         sapisidhash = _generate_sapisidhash(sapisid, self.ORIGIN)
         authorization = f"SAPISIDHASH {sapisidhash}"
 
@@ -66,6 +187,8 @@ class FamilyLink:
             "X-Goog-Api-Key": "AIzaSyAQb1gupaJhY3CXQy2xmTwJMcjmot3M2hw",
             "Authorization": authorization,
         }
+        # Prefer jar if present; otherwise start empty (we already have SAPISIDHASH header)
+        self._cookies = cookies_jar
         self._session = httpx.Client(headers=self._headers, cookies=self._cookies)
         self._app_names = {}  # cache app names
 
