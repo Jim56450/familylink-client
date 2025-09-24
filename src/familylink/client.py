@@ -34,13 +34,13 @@ def _generate_sapisidhash(sapisid: str, origin: str) -> str:
     # digest = hashlib.sha1(to_hash).hexdigest()
     # return f"{ts}_{digest}"  # underscore is accepted by many Google backends
 
-    # ts = int(time.time() * 1000)  # milliseconds
-    # digest = hashlib.sha1(f"{ts} {sapisid} {origin}".encode("utf-8")).hexdigest()
-    # return f"{ts}_{digest}"  # underscore, not space
+    ts = int(time.time() * 1000)  # milliseconds
+    digest = hashlib.sha1(f"{ts} {sapisid} {origin}".encode("utf-8")).hexdigest()
+    return f"{ts}_{digest}"  # underscore, not space
 
-    ts = int(time.time() * 1000)
-    digest = hashlib.sha1(f"{ts} {sapisid} {origin}".encode()).hexdigest()
-    return f"{ts}_{digest}"
+    # ts = int(time.time() * 1000)
+    # digest = hashlib.sha1(f"{ts} {sapisid} {origin}".encode()).hexdigest()
+    # return f"{ts}_{digest}"
 
     # ts = int(time.time())
     # msg = f"{ts} {sapisid} {origin}".encode("utf-8")
