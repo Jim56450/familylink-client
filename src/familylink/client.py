@@ -34,10 +34,14 @@ def _generate_sapisidhash(sapisid: str, origin: str) -> str:
     # digest = hashlib.sha1(to_hash).hexdigest()
     # return f"{ts}_{digest}"  # underscore is accepted by many Google backends
 
-    ts = int(time.time())
-    msg = f"{ts} {sapisid} {origin}".encode("utf-8")
-    digest = hashlib.sha1(msg).hexdigest()
-    return f"{ts} {digest}"  # <— space, not underscore
+    ts = int(time.time() * 1000)  # milliseconds
+    digest = hashlib.sha1(f"{ts} {sapisid} {origin}".encode("utf-8")).hexdigest()
+    return f"{ts}_{digest}"  # underscore, not space
+
+    # ts = int(time.time())
+    # msg = f"{ts} {sapisid} {origin}".encode("utf-8")
+    # digest = hashlib.sha1(msg).hexdigest()
+    # return f"{ts} {digest}"  # <— space, not underscore
 
 class FamilyLink:
     """Client to interact with Google Family Link."""
@@ -154,14 +158,25 @@ class FamilyLink:
         sapisidhash = _generate_sapisidhash(sapisid, self.ORIGIN)
         authorization = f"SAPISIDHASH {sapisidhash}"
 
+        # self._headers = {
+        #     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+        #     "Origin": self.ORIGIN,
+        #     "Content-Type": "application/json+protobuf",
+        #     "X-Goog-Api-Key": "AIzaSyAQb1gupaJhY3CXQy2xmTwJMcjmot3M2hw",
+        #     "Authorization": authorization,
+        #     "X-Goog-AuthUser": authuser,
+        # }
+
         self._headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-            "Origin": self.ORIGIN,
+            "User-Agent": "Mozilla/5.0",
+            "Origin": "https://familylink.google.com",  # match working request
+            # no Referer
+            # no X-Goog-AuthUser
             "Content-Type": "application/json+protobuf",
             "X-Goog-Api-Key": "AIzaSyAQb1gupaJhY3CXQy2xmTwJMcjmot3M2hw",
-            "Authorization": authorization,
-            "X-Goog-AuthUser": authuser,
+            "Authorization": f"SAPISIDHASH {_generate_sapisidhash(sapisid, 'https://familylink.google.com')}",
         }
+
         self._cookies = cookies_jar
         self._session = httpx.Client(headers=self._headers, cookies=self._cookies, timeout=30)
         self._app_names = {}
