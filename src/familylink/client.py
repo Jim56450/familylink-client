@@ -29,10 +29,15 @@ def _generate_sapisidhash(sapisid: str, origin: str) -> str:
     """Generate the SAPISIDHASH value for Authorization header.
     Format: f"{timestamp} {sha1(f'{timestamp} {sapisid} {origin}')}"
     """
+    # ts = int(time.time())
+    # to_hash = f"{ts} {sapisid} {origin}".encode("utf-8")
+    # digest = hashlib.sha1(to_hash).hexdigest()
+    # return f"{ts}_{digest}"  # underscore is accepted by many Google backends
+
     ts = int(time.time())
-    to_hash = f"{ts} {sapisid} {origin}".encode("utf-8")
-    digest = hashlib.sha1(to_hash).hexdigest()
-    return f"{ts}_{digest}"  # underscore is accepted by many Google backends
+    msg = f"{ts} {sapisid} {origin}".encode("utf-8")
+    digest = hashlib.sha1(msg).hexdigest()
+    return f"{ts} {digest}"  # <— space, not underscore
 
 class FamilyLink:
     """Client to interact with Google Family Link."""
