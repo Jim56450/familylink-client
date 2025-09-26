@@ -217,3 +217,13 @@ class FamilyLink:
         r = self._session.get(f"{self.BASE_URL}{path}", params=params)
         r.raise_for_status()
         return r.json()
+
+    def get_time_limit(self, child_id: str) -> dict:
+        r = self._session.get(f"{self.BASE_URL}/people/{child_id}/timeLimit")
+        r.raise_for_status()
+        return r.json()
+
+    def get_applied_time_limits(self, child_id: str) -> dict:
+        r = self._session.get(f"{self.BASE_URL}/people/{child_id}/appliedTimeLimits")
+        r.raise_for_status()
+        return r.json()
