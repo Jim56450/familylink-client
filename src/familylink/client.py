@@ -206,3 +206,14 @@ class FamilyLink:
             if not p:
                 continue
             print(f"- {getattr(p,'display_name',None)} | {getattr(p,'email',None)} | user_id={getattr(m,'user_id',None)}")
+
+    def get_apps_and_usage(self, child_id: str) -> dict:
+        # Minimal GET; our session already has the right headers (Origin, SAPISIDHASH, etc.)
+        path = f"/people/{child_id}/appsandusage"
+        params = [
+            ("capabilities", "CAPABILITY_APP_USAGE_SESSION"),
+            ("capabilities", "CAPABILITY_SUPERVISION_CAPABILITIES"),
+        ]
+        r = self._session.get(f"{self.BASE_URL}{path}", params=params)
+        r.raise_for_status()
+        return r.json()
